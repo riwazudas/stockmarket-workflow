@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from google import genai
+from google.genai import types
 
 from stock_ai_system.config.config import Settings, get_settings
 
@@ -63,3 +64,33 @@ class LLMClient:
         )
         cleaned_text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         return json.loads(cleaned_text)
+
+    def generate_with_grounding(
+        self,
+        prompt: str,
+        *,
+        model: str | None = None,
+        system_instruction: str | None = None,
+        temperature: float = 0.0,
+    ) -> str:
+        """Call Gemini with Google Search grounding enabled for real-time results.
+
+        Switching grounding off: call generate_text() instead.
+        Switching models: pass model= or change DEFAULT_LLM_MODEL in .env.
+        """
+        if self.client is None:
+            raise RuntimeError("GEMINI_API_KEY is not configured. Set it in .env before calling the LLM.")
+
+        search_tool = types.Tool(google_search=types.GoogleSearch())
+        config = types.GenerateContentConfig(
+            tools=[search_tool],
+            system_instruction=system_instruction,
+            temperature=temperature,
+        )
+
+        response = self.client.models.generate_content(
+            model=model or self.model,
+            contents=prompt,
+            config=config,
+        )
+        return getattr(response, "text", "") or ""

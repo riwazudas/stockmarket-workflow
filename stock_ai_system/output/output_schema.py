@@ -78,7 +78,56 @@ class OutputSchema:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+    @staticmethod
+    def validate_news_collector_output(payload: Any, ticker: str) -> dict[str, Any]:
+        """Validate and normalize the NewsCollectorAgent payload format."""
+        if not isinstance(payload, dict):
+            raise TypeError("NewsCollectorAgent output must be a dictionary.")
+
+        stock_value = str(payload.get("stock", ticker)).strip() or ticker
+        raw_articles = payload.get("articles", [])
+        if not isinstance(raw_articles, list):
+            raise TypeError("NewsCollectorAgent output field 'articles' must be a list.")
+
+        articles: list[dict[str, str]] = []
+        for item in raw_articles:
+            if not isinstance(item, dict):
+                continue
+
+            headline = str(item.get("headline", "")).strip()
+            summary = str(item.get("summary", "")).strip()
+            source = str(item.get("source", "")).strip()
+            date_value = str(item.get("date", "")).strip()
+            if not headline:
+                continue
+
+            articles.append(
+                {
+                    "headline": headline,
+                    "summary": summary,
+                    "source": source,
+                    "date": date_value,
+                }
+            )
+
+        return {"stock": stock_value, "articles": articles}
+
     def _apply_news(self, payload: dict[str, Any]) -> None:
+        if "articles" in payload:
+            payload = self.validate_news_collector_output(payload, self.ticker)
+            items = payload.get("articles", [])
+            self.headlines = [
+                NewsHeadline(
+                    headline=item.get("headline", ""),
+                    sentiment=item.get("sentiment", "neutral"),
+                    source=item.get("source", ""),
+                    confidence=None,
+                )
+                for item in items
+                if isinstance(item, dict)
+            ]
+            return
+
         items = payload.get("headlines", [])
         self.headlines = [
             NewsHeadline(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from dash import Dash, Input, Output, State, dcc, html
+from dash import Dash, Input, Output, State, dash_table, dcc, html
 import plotly.graph_objects as go
 
 from stock_ai_system.output.output_schema import OutputSchema
@@ -68,17 +68,41 @@ def create_dashboard_app(pipeline_manager: Any, settings: Any) -> Dash:
         output = pipeline_output or OutputSchema(ticker=default_ticker).to_dict()
 
         if active_tab == "news":
-            headlines = output.get("headlines", [])
+            news_rows = _build_news_rows(output)
             return html.Div(
                 [
                     html.H3("News Headlines + Sentiment"),
-                    html.Ul(
-                        [
-                            html.Li(
-                                f"{item.get('headline', 'N/A')} | sentiment: {item.get('sentiment', 'neutral')}"
-                            )
-                            for item in headlines
-                        ]
+                    dash_table.DataTable(
+                        columns=[
+                            {"name": "Headline", "id": "headline"},
+                            {"name": "Source", "id": "source"},
+                            {"name": "Date", "id": "date"},
+                            {"name": "Sentiment", "id": "sentiment"},
+                        ],
+                        data=news_rows,
+                        style_cell={"textAlign": "left", "padding": "8px", "whiteSpace": "normal"},
+                        style_header={"fontWeight": "bold"},
+                        style_data_conditional=[
+                            {
+                                "if": {"filter_query": "{sentiment} = positive", "column_id": "sentiment"},
+                                "backgroundColor": "#e8f5e9",
+                                "color": "#1b5e20",
+                            },
+                            {
+                                "if": {"filter_query": "{sentiment} = negative", "column_id": "sentiment"},
+                                "backgroundColor": "#ffebee",
+                                "color": "#b71c1c",
+                            },
+                            {
+                                "if": {"filter_query": "{sentiment} = neutral", "column_id": "sentiment"},
+                                "backgroundColor": "#f5f5f5",
+                                "color": "#37474f",
+                            },
+                        ],
+                    ),
+                    html.P(
+                        "Sentiment color coding is placeholder logic for now and will become model-driven in later steps.",
+                        style={"marginTop": "8px", "color": "#666"},
                     ),
                 ]
             )
@@ -152,3 +176,48 @@ def _build_price_figure(output: dict[str, Any]) -> go.Figure:
 
     figure.update_layout(margin={"l": 20, "r": 20, "t": 20, "b": 20}, height=420)
     return figure
+
+
+def _build_news_rows(output: dict[str, Any]) -> list[dict[str, Any]]:
+    # Prefer canonical NewsCollectorAgent output if present, then fall back to normalized headlines.
+    agent_news = output.get("agent_outputs", {}).get("news", {})
+    raw_articles = agent_news.get("articles", []) if isinstance(agent_news, dict) else []
+
+    rows: list[dict[str, Any]] = []
+    for article in raw_articles:
+        if not isinstance(article, dict):
+            continue
+        sentiment = _placeholder_sentiment(article)
+        rows.append(
+            {
+                "headline": article.get("headline", "N/A"),
+                "source": article.get("source", "Unknown"),
+                "date": article.get("date", ""),
+                "sentiment": sentiment,
+            }
+        )
+
+    if rows:
+        return rows
+
+    for headline_item in output.get("headlines", []):
+        if not isinstance(headline_item, dict):
+            continue
+        rows.append(
+            {
+                "headline": headline_item.get("headline", "N/A"),
+                "source": headline_item.get("source", "Unknown"),
+                "date": "",
+                "sentiment": headline_item.get("sentiment", "neutral"),
+            }
+        )
+    return rows
+
+
+def _placeholder_sentiment(article: dict[str, Any]) -> str:
+    text = f"{article.get('headline', '')} {article.get('summary', '')}".lower()
+    if any(term in text for term in ("beat", "surge", "up", "gain", "bull")):
+        return "positive"
+    if any(term in text for term in ("miss", "drop", "down", "loss", "bear")):
+        return "negative"
+    return "neutral"

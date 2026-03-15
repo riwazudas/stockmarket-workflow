@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 
+from stock_ai_system.agents.news_collector_agent import NewsCollectorAgent
 from stock_ai_system.config.config import get_settings
 from stock_ai_system.dashboard.dashboard_app import create_dashboard_app
 from stock_ai_system.pipeline.pipeline_manager import PipelineManager
@@ -12,7 +13,13 @@ from stock_ai_system.utils.llm_client import LLMClient
 def build_pipeline_manager() -> PipelineManager:
     settings = get_settings()
     llm_client = LLMClient.from_settings(settings)
-    return PipelineManager(agents=[], llm_client=llm_client, settings=settings)
+    # Add agents here as the system grows.
+    # Current step includes only the NewsCollectorAgent.
+    return PipelineManager(
+        agents=[NewsCollectorAgent(llm_client=llm_client)],
+        llm_client=llm_client,
+        settings=settings,
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -59,6 +66,7 @@ def main() -> None:
         # 1. Install requirements from requirements.txt.
         # 2. Ensure GEMINI_API_KEY is available in .env.
         # 3. Run: python main.py --dashboard
+        #    Optional: python main.py --dashboard --port 8051
         app.run(host=args.host, port=args.port, debug=args.debug)
         return
 
