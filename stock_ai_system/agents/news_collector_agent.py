@@ -27,9 +27,10 @@ class NewsCollectorAgent(BaseAgent):
         prompt = (
             f"Search for the latest financial news for the stock ticker {ticker} "
             f"as of {datetime.now().date()}. "
-            "Identify the 5 most significant recent news items. "
+            "Identify the 30 most significant recent news items from reputable financial sources. "
+            "For each article include the actual source URL where available. "
             "Return the data as a strict JSON object with this exact structure: "
-            '{"stock":"' + ticker + '","articles":[{"headline":"","summary":"","source":"","date":"YYYY-MM-DD"}]}'
+            '{"stock":"' + ticker + '","articles":[{"headline":"","summary":"","source":"","date":"YYYY-MM-DD","url":""}]}'
         )
 
         try:

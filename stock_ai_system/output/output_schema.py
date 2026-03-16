@@ -101,12 +101,14 @@ class OutputSchema:
             if not headline:
                 continue
 
+            url = str(item.get("url", "")).strip()
             articles.append(
                 {
                     "headline": headline,
                     "summary": summary,
                     "source": source,
                     "date": date_value,
+                    "url": url,
                 }
             )
 

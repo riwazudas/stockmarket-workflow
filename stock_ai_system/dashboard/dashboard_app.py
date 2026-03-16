@@ -78,9 +78,22 @@ def create_dashboard_app(pipeline_manager: Any, settings: Any) -> Dash:
                             {"name": "Source", "id": "source"},
                             {"name": "Date", "id": "date"},
                             {"name": "Sentiment", "id": "sentiment"},
+                            {"name": "Link", "id": "url", "presentation": "markdown"},
                         ],
                         data=news_rows,
+                        markdown_options={"html": True},
+                        page_size=15,
+                        page_action="native",
+                        sort_action="native",
+                        filter_action="native",
                         style_cell={"textAlign": "left", "padding": "8px", "whiteSpace": "normal"},
+                        style_cell_conditional=[
+                            {"if": {"column_id": "headline"}, "width": "38%"},
+                            {"if": {"column_id": "source"}, "width": "12%"},
+                            {"if": {"column_id": "date"}, "width": "10%"},
+                            {"if": {"column_id": "sentiment"}, "width": "8%"},
+                            {"if": {"column_id": "url"}, "width": "7%", "textAlign": "center"},
+                        ],
                         style_header={"fontWeight": "bold"},
                         style_data_conditional=[
                             {
@@ -188,12 +201,15 @@ def _build_news_rows(output: dict[str, Any]) -> list[dict[str, Any]]:
         if not isinstance(article, dict):
             continue
         sentiment = _placeholder_sentiment(article)
+        url = article.get("url", "").strip()
+        url_cell = f"[Open ↗]({url})" if url else ""
         rows.append(
             {
                 "headline": article.get("headline", "N/A"),
                 "source": article.get("source", "Unknown"),
                 "date": article.get("date", ""),
                 "sentiment": sentiment,
+                "url": url_cell,
             }
         )
 
@@ -209,6 +225,7 @@ def _build_news_rows(output: dict[str, Any]) -> list[dict[str, Any]]:
                 "source": headline_item.get("source", "Unknown"),
                 "date": "",
                 "sentiment": headline_item.get("sentiment", "neutral"),
+                "url": "",
             }
         )
     return rows
