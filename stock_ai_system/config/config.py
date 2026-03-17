@@ -29,6 +29,8 @@ class Settings:
     gemini_api_key: str = ""
     default_llm_model: str = "gemini-3-flash-preview"
     enable_llm_request_logging: bool = False
+    miapi_api_key: str = ""
+    miapi_base_url: str = "https://api.miapi.uk"
     dashboard_host: str = "127.0.0.1"
     dashboard_port: int = 8050
     available_tickers: tuple[str, ...] = ("AAPL", "MSFT", "NVDA", "TSLA", "AMZN")
@@ -46,6 +48,9 @@ def get_settings() -> Settings:
         or "gemini-3-flash-preview",
         enable_llm_request_logging=os.getenv("LLM_LOG_REQUESTS", "false").strip().lower()
         in {"1", "true", "yes", "on"},
+        miapi_api_key=os.getenv("MIAPI_API_KEY", "").strip(),
+        miapi_base_url=os.getenv("MIAPI_BASE_URL", "https://api.miapi.uk").strip()
+        or "https://api.miapi.uk",
         dashboard_host=os.getenv("DASHBOARD_HOST", "127.0.0.1").strip() or "127.0.0.1",
         dashboard_port=int(os.getenv("DASHBOARD_PORT", "8050")),
     )
