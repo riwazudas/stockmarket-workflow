@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from google import genai
 from google.genai import types
 
 from stock_ai_system.config.config import Settings, get_settings
+
+
+logger = logging.getLogger(__name__)
 
 
 class LLMClient:
@@ -16,9 +20,15 @@ class LLMClient:
     when they need schema-aligned structured responses.
     """
 
-    def __init__(self, api_key: str, model: str) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        enable_request_logging: bool = False,
+    ) -> None:
         self.api_key = api_key
         self.model = model
+        self.enable_request_logging = enable_request_logging
         self.client = genai.Client(api_key=api_key) if api_key else None
 
     @classmethod
@@ -27,6 +37,28 @@ class LLMClient:
         return cls(
             api_key=resolved_settings.gemini_api_key,
             model=resolved_settings.default_llm_model,
+            enable_request_logging=resolved_settings.enable_llm_request_logging,
+        )
+
+    def _log_request(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        system_instruction: str | None,
+        grounded: bool,
+        temperature: float | None,
+    ) -> None:
+        if not self.enable_request_logging:
+            return
+
+        logger.info(
+            "Gemini request | model=%s grounded=%s prompt_chars=%d system_instruction=%s temperature=%s",
+            model,
+            grounded,
+            len(prompt),
+            bool(system_instruction and system_instruction.strip()),
+            temperature,
         )
 
     def generate_text(
@@ -43,8 +75,17 @@ class LLMClient:
         if system_instruction:
             config["system_instruction"] = system_instruction
 
+        resolved_model = model or self.model
+        self._log_request(
+            model=resolved_model,
+            prompt=prompt,
+            system_instruction=system_instruction,
+            grounded=False,
+            temperature=None,
+        )
+
         response = self.client.models.generate_content(
-            model=model or self.model,
+            model=resolved_model,
             contents=prompt,
             config=config or None,
         )
@@ -88,8 +129,17 @@ class LLMClient:
             temperature=temperature,
         )
 
+        resolved_model = model or self.model
+        self._log_request(
+            model=resolved_model,
+            prompt=prompt,
+            system_instruction=system_instruction,
+            grounded=True,
+            temperature=temperature,
+        )
+
         response = self.client.models.generate_content(
-            model=model or self.model,
+            model=resolved_model,
             contents=prompt,
             config=config,
         )

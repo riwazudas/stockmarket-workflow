@@ -69,9 +69,29 @@ def create_dashboard_app(pipeline_manager: Any, settings: Any) -> Dash:
 
         if active_tab == "news":
             news_rows = _build_news_rows(output)
+            overall_sentiment = str(output.get("overall_sentiment", "Neutral"))
+            overall_score = str(output.get("overall_score", "0.00"))
+            kpi_bg = _sentiment_color(overall_sentiment)
             return html.Div(
                 [
                     html.H3("News Headlines + Sentiment"),
+                    html.Div(
+                        [
+                            html.Div("Overall Sentiment", style={"fontSize": "13px", "opacity": 0.85}),
+                            html.Div(
+                                f"{overall_sentiment} ({overall_score})",
+                                style={"fontSize": "24px", "fontWeight": 700},
+                            ),
+                        ],
+                        style={
+                            "background": kpi_bg,
+                            "color": "#111",
+                            "padding": "14px 16px",
+                            "borderRadius": "10px",
+                            "display": "inline-block",
+                            "marginBottom": "12px",
+                        },
+                    ),
                     dash_table.DataTable(
                         columns=[
                             {"name": "Headline", "id": "headline"},
@@ -97,25 +117,21 @@ def create_dashboard_app(pipeline_manager: Any, settings: Any) -> Dash:
                         style_header={"fontWeight": "bold"},
                         style_data_conditional=[
                             {
-                                "if": {"filter_query": "{sentiment} = positive", "column_id": "sentiment"},
+                                "if": {"filter_query": "{sentiment} = Positive", "column_id": "sentiment"},
                                 "backgroundColor": "#e8f5e9",
                                 "color": "#1b5e20",
                             },
                             {
-                                "if": {"filter_query": "{sentiment} = negative", "column_id": "sentiment"},
+                                "if": {"filter_query": "{sentiment} = Negative", "column_id": "sentiment"},
                                 "backgroundColor": "#ffebee",
                                 "color": "#b71c1c",
                             },
                             {
-                                "if": {"filter_query": "{sentiment} = neutral", "column_id": "sentiment"},
+                                "if": {"filter_query": "{sentiment} = Neutral", "column_id": "sentiment"},
                                 "backgroundColor": "#f5f5f5",
                                 "color": "#37474f",
                             },
                         ],
-                    ),
-                    html.P(
-                        "Sentiment color coding is placeholder logic for now and will become model-driven in later steps.",
-                        style={"marginTop": "8px", "color": "#666"},
                     ),
                 ]
             )
@@ -194,13 +210,22 @@ def _build_price_figure(output: dict[str, Any]) -> go.Figure:
 def _build_news_rows(output: dict[str, Any]) -> list[dict[str, Any]]:
     # Prefer canonical NewsCollectorAgent output if present, then fall back to normalized headlines.
     agent_news = output.get("agent_outputs", {}).get("news", {})
+    sentiment_output = output.get("agent_outputs", {}).get("sentiment", {})
     raw_articles = agent_news.get("articles", []) if isinstance(agent_news, dict) else []
+    article_sentiments = (
+        sentiment_output.get("article_sentiments", []) if isinstance(sentiment_output, dict) else []
+    )
+    sentiment_map = {
+        str(item.get("headline", "")): str(item.get("sentiment", "Neutral"))
+        for item in article_sentiments
+        if isinstance(item, dict)
+    }
 
     rows: list[dict[str, Any]] = []
     for article in raw_articles:
         if not isinstance(article, dict):
             continue
-        sentiment = _placeholder_sentiment(article)
+        sentiment = sentiment_map.get(str(article.get("headline", "")), "Neutral")
         url = article.get("url", "").strip()
         url_cell = f"[Open ↗]({url})" if url else ""
         rows.append(
@@ -231,10 +256,10 @@ def _build_news_rows(output: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
-def _placeholder_sentiment(article: dict[str, Any]) -> str:
-    text = f"{article.get('headline', '')} {article.get('summary', '')}".lower()
-    if any(term in text for term in ("beat", "surge", "up", "gain", "bull")):
-        return "positive"
-    if any(term in text for term in ("miss", "drop", "down", "loss", "bear")):
-        return "negative"
-    return "neutral"
+def _sentiment_color(sentiment: str) -> str:
+    normalized = sentiment.strip().lower()
+    if normalized == "positive":
+        return "#e8f5e9"
+    if normalized == "negative":
+        return "#ffebee"
+    return "#f5f5f5"

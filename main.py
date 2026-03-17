@@ -2,21 +2,35 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 
 from stock_ai_system.agents.news_collector_agent import NewsCollectorAgent
+from stock_ai_system.agents.sentiment_analyzer_agent import SentimentAnalyzerAgent
 from stock_ai_system.config.config import get_settings
 from stock_ai_system.dashboard.dashboard_app import create_dashboard_app
 from stock_ai_system.pipeline.pipeline_manager import PipelineManager
 from stock_ai_system.utils.llm_client import LLMClient
 
 
+def configure_logging() -> None:
+    settings = get_settings()
+    if settings.enable_llm_request_logging:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        )
+
+
 def build_pipeline_manager() -> PipelineManager:
     settings = get_settings()
     llm_client = LLMClient.from_settings(settings)
     # Add agents here as the system grows.
-    # Current step includes only the NewsCollectorAgent.
+    # Agent order matters when downstream agents consume previous outputs.
     return PipelineManager(
-        agents=[NewsCollectorAgent(llm_client=llm_client)],
+        agents=[
+            NewsCollectorAgent(llm_client=llm_client),
+            SentimentAnalyzerAgent(llm_client=llm_client),
+        ],
         llm_client=llm_client,
         settings=settings,
     )
@@ -56,6 +70,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    configure_logging()
     args = parse_args()
     settings = get_settings()
     pipeline_manager = build_pipeline_manager()

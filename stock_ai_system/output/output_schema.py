@@ -45,6 +45,8 @@ class OutputSchema:
     price_series: list[PricePoint] = field(default_factory=list)
     current_price: float | None = None
     trend: str = "pending"
+    overall_sentiment: str = "Neutral"
+    overall_score: str = "0.00"
     predicted_price: PricePrediction = field(default_factory=PricePrediction)
     overall_outlook: OutlookSummary = field(default_factory=OutlookSummary)
     agent_outputs: dict[str, Any] = field(default_factory=dict)
@@ -59,6 +61,8 @@ class OutputSchema:
             self._apply_prices(payload)
         elif output_key == "prediction":
             self._apply_prediction(payload)
+        elif output_key == "sentiment":
+            self._apply_sentiment(payload)
         elif output_key == "outlook":
             self._apply_outlook(payload)
 
@@ -114,6 +118,59 @@ class OutputSchema:
 
         return {"stock": stock_value, "articles": articles}
 
+    @staticmethod
+    def validate_sentiment_analyzer_output(
+        payload: Any,
+        article_inputs: list[dict[str, str]],
+    ) -> dict[str, Any]:
+        """Validate and normalize SentimentAnalyzerAgent output shape."""
+        if not isinstance(payload, dict):
+            raise TypeError("SentimentAnalyzerAgent output must be a dictionary.")
+
+        raw_items = payload.get("article_sentiments", [])
+        if not isinstance(raw_items, list):
+            raise TypeError("SentimentAnalyzerAgent field 'article_sentiments' must be a list.")
+
+        allowed = {"positive": "Positive", "neutral": "Neutral", "negative": "Negative"}
+        normalized_items: list[dict[str, str]] = []
+        for item in raw_items:
+            if not isinstance(item, dict):
+                continue
+            headline = str(item.get("headline", "")).strip()
+            sentiment_raw = str(item.get("sentiment", "Neutral")).strip().lower()
+            reason = str(item.get("reason", "")).strip()
+            if not headline:
+                continue
+            sentiment = allowed.get(sentiment_raw, "Neutral")
+            normalized_items.append(
+                {
+                    "headline": headline,
+                    "sentiment": sentiment,
+                    "reason": reason,
+                }
+            )
+
+        if not normalized_items:
+            normalized_items = [
+                {
+                    "headline": item.get("headline", ""),
+                    "sentiment": "Neutral",
+                    "reason": "No sentiment output available.",
+                }
+                for item in article_inputs
+                if item.get("headline")
+            ]
+
+        overall_sentiment_raw = str(payload.get("overall_sentiment", "Neutral")).strip().lower()
+        overall_sentiment = allowed.get(overall_sentiment_raw, "Neutral")
+        overall_score = str(payload.get("overall_score", "0.00")).strip() or "0.00"
+
+        return {
+            "article_sentiments": normalized_items,
+            "overall_score": overall_score,
+            "overall_sentiment": overall_sentiment,
+        }
+
     def _apply_news(self, payload: dict[str, Any]) -> None:
         if "articles" in payload:
             payload = self.validate_news_collector_output(payload, self.ticker)
@@ -158,6 +215,26 @@ class OutputSchema:
             horizon=payload.get("horizon", "1d"),
             rationale=payload.get("rationale", ""),
         )
+
+    def _apply_sentiment(self, payload: dict[str, Any]) -> None:
+        validated = self.validate_sentiment_analyzer_output(payload, [])
+        sentiment_by_headline = {
+            item.get("headline", ""): item.get("sentiment", "Neutral")
+            for item in validated.get("article_sentiments", [])
+            if isinstance(item, dict)
+        }
+
+        self.headlines = [
+            NewsHeadline(
+                headline=item.headline,
+                sentiment=sentiment_by_headline.get(item.headline, item.sentiment),
+                source=item.source,
+                confidence=item.confidence,
+            )
+            for item in self.headlines
+        ]
+        self.overall_score = validated.get("overall_score", "0.00")
+        self.overall_sentiment = validated.get("overall_sentiment", "Neutral")
 
     def _apply_outlook(self, payload: dict[str, Any]) -> None:
         self.overall_outlook = OutlookSummary(
