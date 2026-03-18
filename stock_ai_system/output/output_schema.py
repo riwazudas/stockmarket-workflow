@@ -171,6 +171,83 @@ class OutputSchema:
             "overall_sentiment": overall_sentiment,
         }
 
+    @staticmethod
+    def validate_market_data_output(payload: Any, ticker: str) -> dict[str, Any]:
+        """Validate and normalize MarketDataAgent output shape."""
+        if not isinstance(payload, dict):
+            raise TypeError("MarketDataAgent output must be a dictionary.")
+
+        def _normalize_price_list(raw_prices: Any, field_name: str) -> list[dict[str, float | str]]:
+            if not isinstance(raw_prices, list):
+                raise TypeError(f"MarketDataAgent field '{field_name}' must be a list.")
+
+            normalized: list[dict[str, float | str]] = []
+            for item in raw_prices:
+                if not isinstance(item, dict):
+                    continue
+
+                timestamp = str(item.get("timestamp", "")).strip()
+                if not timestamp:
+                    continue
+
+                try:
+                    close_value = float(item.get("close", item.get("price", 0.0)))
+                except (TypeError, ValueError):
+                    continue
+
+                def _safe_float(value: Any, fallback: float) -> float:
+                    try:
+                        return float(value)
+                    except (TypeError, ValueError):
+                        return fallback
+
+                open_value = _safe_float(item.get("open", close_value), close_value)
+                high_value = _safe_float(item.get("high", close_value), close_value)
+                low_value = _safe_float(item.get("low", close_value), close_value)
+                volume_value = _safe_float(item.get("volume", 0.0), 0.0)
+
+                normalized.append(
+                    {
+                        "timestamp": timestamp,
+                        "open": open_value,
+                        "high": high_value,
+                        "low": low_value,
+                        "close": close_value,
+                        "volume": volume_value,
+                    }
+                )
+            return normalized
+
+        historical_prices = _normalize_price_list(
+            payload.get("historical_prices", []),
+            "historical_prices",
+        )
+        historical_prices_daily = _normalize_price_list(
+            payload.get("historical_prices_daily", []),
+            "historical_prices_daily",
+        )
+
+        indicators = payload.get("technical_indicators", {})
+        if not isinstance(indicators, dict):
+            raise TypeError("MarketDataAgent field 'technical_indicators' must be a dictionary.")
+
+        trend = str(indicators.get("trend", "pending")).strip().lower()
+        if trend not in {"up", "down", "sideways", "pending"}:
+            trend = "pending"
+
+        validated_payload = {
+            "stock": str(payload.get("stock", ticker)).strip() or ticker,
+            "historical_prices": historical_prices,
+            "historical_prices_daily": historical_prices_daily,
+            "technical_indicators": {
+                "ma5": str(indicators.get("ma5", "")).strip(),
+                "ma7": str(indicators.get("ma7", "")).strip(),
+                "rsi": str(indicators.get("rsi", "")).strip(),
+                "trend": trend,
+            },
+        }
+        return validated_payload
+
     def _apply_news(self, payload: dict[str, Any]) -> None:
         if "articles" in payload:
             payload = self.validate_news_collector_output(payload, self.ticker)
@@ -200,6 +277,25 @@ class OutputSchema:
         ]
 
     def _apply_prices(self, payload: dict[str, Any]) -> None:
+        # Preferred format for MarketDataAgent.
+        if "historical_prices" in payload:
+            payload = self.validate_market_data_output(payload, self.ticker)
+            history = payload.get("historical_prices", [])
+            if not history:
+                history = payload.get("historical_prices_daily", [])
+            self.price_series = [
+                PricePoint(timestamp=item.get("timestamp", ""), price=float(item.get("close", 0.0)))
+                for item in history
+                if isinstance(item, dict) and item.get("close") is not None
+            ]
+            self.current_price = (
+                float(history[-1].get("close")) if history else self.current_price
+            )
+            indicators = payload.get("technical_indicators", {})
+            self.trend = str(indicators.get("trend", self.trend))
+            return
+
+        # Backward-compatible scaffold format.
         series = payload.get("series", [])
         self.price_series = [
             PricePoint(timestamp=item.get("timestamp", ""), price=float(item.get("price", 0.0)))

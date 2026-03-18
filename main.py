@@ -4,6 +4,7 @@ import argparse
 import json
 import logging
 
+from stock_ai_system.agents.market_data_agent import MarketDataAgent
 from stock_ai_system.agents.news_collector_agent import NewsCollectorAgent
 from stock_ai_system.agents.sentiment_analyzer_agent import SentimentAnalyzerAgent
 from stock_ai_system.config.config import get_settings
@@ -28,6 +29,7 @@ def build_pipeline_manager() -> PipelineManager:
     # Agent order matters when downstream agents consume previous outputs.
     return PipelineManager(
         agents=[
+            MarketDataAgent(llm_client=llm_client),
             NewsCollectorAgent(llm_client=llm_client),
             SentimentAnalyzerAgent(llm_client=llm_client),
         ],
